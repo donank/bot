@@ -4,6 +4,7 @@ import random
 import textwrap
 import typing as t
 from datetime import datetime, timedelta
+from functools import partial
 from operator import itemgetter
 
 import discord
@@ -14,13 +15,16 @@ from discord.ext.commands import Cog, Context, group
 from bot.bot import Bot
 from bot.constants import Guild, Icons, NEGATIVE_REPLIES, POSITIVE_REPLIES, STAFF_ROLES
 from bot.converters import Duration
+from bot.decorators import mutually_exclusive
 from bot.pagination import LinePaginator
 from bot.utils.checks import without_role_check
+from bot.utils.function import get_arg_value
 from bot.utils.scheduling import Scheduler
 from bot.utils.time import humanize_delta
 
 log = logging.getLogger(__name__)
 
+NAMESPACE = "reminders"  # Used for the mutually_exclusive decorator; constant to prevent typos
 WHITELISTED_CHANNELS = Guild.reminder_whitelist
 MAXIMUM_REMINDERS = 5
 
@@ -108,6 +112,7 @@ class Reminders(Cog):
         log.trace(f"Scheduling new task #{reminder['id']}")
         self.schedule_reminder(reminder)
 
+    @mutually_exclusive(NAMESPACE, lambda args: get_arg_value("reminder", args)["id"])
     async def send_reminder(self, reminder: dict, late: relativedelta = None) -> None:
         """Send the reminder."""
         is_valid, user, channel = self.ensure_valid_reminder(reminder)
@@ -265,6 +270,7 @@ class Reminders(Cog):
         await ctx.send_help(ctx.command)
 
     @edit_reminder_group.command(name="duration", aliases=("time",))
+    @mutually_exclusive(NAMESPACE, partial(get_arg_value, "id_"))
     async def edit_reminder_duration(self, ctx: Context, id_: int, expiration: Duration) -> None:
         """
          Edit one of your reminder's expiration.
@@ -288,6 +294,7 @@ class Reminders(Cog):
         await self._reschedule_reminder(reminder)
 
     @edit_reminder_group.command(name="content", aliases=("reason",))
+    @mutually_exclusive(NAMESPACE, partial(get_arg_value, "id_"))
     async def edit_reminder_content(self, ctx: Context, id_: int, *, content: str) -> None:
         """Edit one of your reminder's content."""
         # Send the request to update the reminder in the database
@@ -309,6 +316,7 @@ class Reminders(Cog):
         await self._reschedule_reminder(reminder)
 
     @remind_group.command("delete", aliases=("remove", "cancel"))
+    @mutually_exclusive(NAMESPACE, partial(get_arg_value, "id_"))
     async def delete_reminder(self, ctx: Context, id_: int) -> None:
         """Delete one of your active reminders."""
         await self.bot.api_client.delete(f"bot/reminders/{id_}")
